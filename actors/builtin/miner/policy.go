@@ -9,15 +9,6 @@ import (
 	. "github.com/filecoin-project/specs-actors/actors/util"
 )
 
-// The period over which all a miner's active sectors will be challenged.
-const WPoStProvingPeriod = abi.ChainEpoch(builtin.EpochsInDay) // 24 hours
-
-// The duration of a deadline's challenge window, the period before a deadline when the challenge is available.
-const WPoStChallengeWindow = abi.ChainEpoch(40 * 60 / builtin.EpochDurationSeconds) // 40 minutes (36 per day)
-
-// The number of non-overlapping PoSt deadlines in each proving period.
-const WPoStPeriodDeadlines = uint64(WPoStProvingPeriod / WPoStChallengeWindow)
-
 func init() {
 	// Check that the challenge windows divide the proving period evenly.
 	if WPoStProvingPeriod%WPoStChallengeWindow != 0 {
@@ -84,9 +75,6 @@ const WPoStChallengeLookback = abi.ChainEpoch(20)
 // This lookback must not be less than WPoStChallengeLookback lest a malicious miner be able to selectively declare
 // faults after learning the challenge value.
 const FaultDeclarationCutoff = WPoStChallengeLookback + 10
-
-// The maximum age of a fault before the sector is terminated.
-const FaultMaxAge = WPoStProvingPeriod*14 - 1
 
 // Staging period for a miner worker key change.
 // Finality is a harsh delay for a miner who has lost their worker key, as the miner will miss Window PoSts until
