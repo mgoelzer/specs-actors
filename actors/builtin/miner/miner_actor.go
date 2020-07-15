@@ -1200,7 +1200,7 @@ func handleProvingPeriod(rt Runtime) {
 			if len(newSectors) > 0 {
 				//if period end is not in the future, get randomness from previous epoch
 				randomnessEpoch := minEpoch(deadline.PeriodEnd(), rt.CurrEpoch()-ElectionLookback)
-				assignmentSeed := rt.GetRandomness(crypto.DomainSeparationTag_WindowedPoStDeadlineAssignment, randomnessEpoch, nil)
+				assignmentSeed := rt.GetRandomnessFromTickets(crypto.DomainSeparationTag_WindowedPoStDeadlineAssignment, randomnessEpoch, nil)
 				err = AssignNewSectors(deadlines, info.WindowPoStPartitionSectors, newSectors, assignmentSeed)
 				builtin.RequireNoErr(rt, err, exitcode.ErrIllegalState, "failed to assign new sectors to deadlines")
 
@@ -1820,7 +1820,7 @@ func verifyWindowedPost(rt Runtime, challengeEpoch abi.ChainEpoch, sectors []*Se
 	var addrBuf bytes.Buffer
 	err = rt.Message().Receiver().MarshalCBOR(&addrBuf)
 	AssertNoError(err)
-	postRandomness := rt.GetRandomness(crypto.DomainSeparationTag_WindowedPoStChallengeSeed, challengeEpoch, addrBuf.Bytes())
+	postRandomness := rt.GetRandomnessFromBeacon(crypto.DomainSeparationTag_WindowedPoStChallengeSeed, challengeEpoch, addrBuf.Bytes())
 
 	sectorProofInfo := make([]abi.SectorInfo, len(sectors))
 	for i, s := range sectors {
@@ -1875,8 +1875,8 @@ func getVerifyInfo(rt Runtime, params *SealVerifyStuff) *abi.SealVerifyInfo {
 	err = rt.Message().Receiver().MarshalCBOR(buf)
 	AssertNoError(err)
 
-	svInfoRandomness := rt.GetRandomness(crypto.DomainSeparationTag_SealRandomness, params.SealRandEpoch, buf.Bytes())
-	svInfoInteractiveRandomness := rt.GetRandomness(crypto.DomainSeparationTag_InteractiveSealChallengeSeed, params.InteractiveEpoch, buf.Bytes())
+	svInfoRandomness := rt.GetRandomnessFromTickets(crypto.DomainSeparationTag_SealRandomness, params.SealRandEpoch, buf.Bytes())
+	svInfoInteractiveRandomness := rt.GetRandomnessFromTickets(crypto.DomainSeparationTag_InteractiveSealChallengeSeed, params.InteractiveEpoch, buf.Bytes())
 
 	return &abi.SealVerifyInfo{
 		SealProof: params.RegisteredSealProof,
