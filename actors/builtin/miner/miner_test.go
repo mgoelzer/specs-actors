@@ -1795,6 +1795,13 @@ type poStConfig struct {
 
 func (h *actorHarness) submitWindowPoSt(rt *mock.Runtime, deadline *miner.DeadlineInfo, partitions []uint64, infos []*miner.SectorOnChainInfo, poStCfg *poStConfig) {
 	rt.SetCaller(h.worker, builtin.AccountActorCodeID)
+
+	commitRand := abi.Randomness("i am some randomness")
+	commitEpoch := rt.Epoch() - 100
+	rt.ExpectGetRandomnessBeacon(crypto.DomainSeparationTag_PoStChainCommit, commitEpoch, nil, commitRand)
+
+	rt.ExpectVerifySignature(crypto.Signature{}, h.worker, commitRand, nil)
+
 	rt.ExpectValidateCallerAddr(h.worker)
 
 	rt.ExpectSend(builtin.RewardActorAddr, builtin.MethodsReward.ThisEpochReward, nil, big.Zero(), &h.epochReward, exitcode.Ok)
@@ -1886,10 +1893,13 @@ func (h *actorHarness) submitWindowPoSt(rt *mock.Runtime, deadline *miner.Deadli
 	}
 
 	params := miner.SubmitWindowedPoStParams{
-		Deadline:   deadline.Index,
-		Partitions: partitions,
-		Proofs:     proofs,
-		Skipped:    skipped,
+		Deadline:         deadline.Index,
+		Partitions:       partitions,
+		Proofs:           proofs,
+		Skipped:          skipped,
+		ChainCommitEpoch: commitEpoch,
+
+		ChainCommitSig: crypto.Signature{},
 	}
 
 	rt.Call(h.a.SubmitWindowedPoSt, &params)

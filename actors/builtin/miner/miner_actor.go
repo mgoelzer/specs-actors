@@ -223,6 +223,14 @@ type SubmitWindowedPoStParams struct {
 	Proofs []abi.PoStProof
 	// Sectors skipped while proving that weren't already declared faulty
 	Skipped abi.BitField
+
+	// ChainCommitEpoch is the epoch at which this proof is being committed to
+	// a particular chain.
+	ChainCommitEpoch abi.ChainEpoch
+
+	// ChainCommitSig is a signature from the miner worker over the randomness
+	// at the specified epoch
+	ChainCommitSig crypto.Signature
 }
 
 // Invoked by miner's worker address to submit their fallback post
@@ -233,6 +241,15 @@ func (a Actor) SubmitWindowedPoSt(rt Runtime, params *SubmitWindowedPoStParams) 
 	var newFaultSectors []*SectorOnChainInfo
 	var recoveredSectors []*SectorOnChainInfo
 	penalty := abi.NewTokenAmount(0)
+
+	if rt.CurrEpoch()-params.ChainCommitEpoch > MaxPoStChainCommitAge {
+		rt.Abortf(exitcode.ErrIllegalArgument, "PoSt chain commit too far in the past")
+	}
+
+	commRand := rt.GetRandomnessFromBeacon(crypto.DomainSeparationTag_PoStChainCommit, params.ChainCommitEpoch, nil)
+	if err := rt.Syscalls().VerifySignature(params.ChainCommitSig, rt.Message().Caller(), commRand); err != nil {
+		rt.Abortf(exitcode.ErrIllegalArgument, "chain commit signature failed to validate: %s", err)
+	}
 
 	// Get the total power/reward. We need these to compute penalties.
 	epochReward := requestCurrentEpochBlockReward(rt)

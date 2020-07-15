@@ -99,6 +99,10 @@ const WorkerKeyChangeDelay = ChainFinality
 // and sector.ActivationEpoch+sealProof.SectorMaximumLifetime()
 const MaxSectorExpirationExtension = builtin.EpochsInYear
 
+// MaxPoStChainCommitAge is the maximum distance back that a PoSt can commit to
+// a chain before being invalid
+const MaxPoStChainCommitAge = ChainFinality
+
 // Ratio of sector size to maximum deals per sector.
 // The maximum number of deals is the sector size divided by this number (2^27)
 // which limits 32GiB sectors to 256 deals and 64GiB sectors to 512
