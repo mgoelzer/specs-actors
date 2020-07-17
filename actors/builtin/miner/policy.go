@@ -56,8 +56,9 @@ func loadPartitionsSectorsMax(partitionSectorCount uint64) uint64 {
 // The maximum number of new sectors that may be staged by a miner during a single proving period.
 const NewSectorsPerPeriodMax = 128 << 10
 
-// Epochs after which chain state is final.
-const ChainFinality = abi.ChainEpoch(900)
+// Filecoin Parameter: Epochs after which chain state is final with overwhelming probability (hence the likelihood of two fork of this size is negligible)
+// Motivation: This is a conservative value that is chosen via simulations of all known attacks.
+const ChainFinality = abi.ChainEpoch(1400)
 
 // List of proof types which can be used when creating new miner actors
 var SupportedProofTypes = map[abi.RegisteredSealProof]struct{}{
