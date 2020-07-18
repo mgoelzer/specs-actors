@@ -90,7 +90,7 @@ const WPoStChallengeLookback = abi.ChainEpoch(20)
 const FaultDeclarationCutoff = WPoStChallengeLookback + 50
 
 // The maximum age of a fault before the sector is terminated.
-const FaultMaxAge = WPoStProvingPeriod*14
+const FaultMaxAge = WPoStProvingPeriod * 14
 
 // Staging period for a miner worker key change.
 // Finality is a harsh delay for a miner who has lost their worker key, as the miner will miss Window PoSts until

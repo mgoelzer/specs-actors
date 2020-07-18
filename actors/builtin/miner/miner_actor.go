@@ -187,6 +187,7 @@ type ChangePeerIDParams struct {
 }
 
 func (a Actor) ChangePeerID(rt Runtime, params *ChangePeerIDParams) *adt.EmptyValue {
+	// TODO: Max size of peer ID?
 	var st State
 	rt.State().Transaction(&st, func() interface{} {
 		info := getMinerInfo(rt, &st)
@@ -205,6 +206,7 @@ type ChangeMultiaddrsParams struct {
 }
 
 func (a Actor) ChangeMultiaddrs(rt Runtime, params *ChangeMultiaddrsParams) *adt.EmptyValue {
+	// TODO: Max number/size of multiaddrs?
 	var st State
 	rt.State().Transaction(&st, func() interface{} {
 		info := getMinerInfo(rt, &st)
@@ -416,22 +418,33 @@ func (a Actor) SubmitWindowedPoSt(rt Runtime, params *SubmitWindowedPoStParams) 
 // Proposals must be posted on chain via sma.PublishStorageDeals before PreCommitSector.
 // Optimization: PreCommitSector could contain a list of deals that are not published yet.
 func (a Actor) PreCommitSector(rt Runtime, params *SectorPreCommitInfo) *adt.EmptyValue {
-	if params.Expiration <= rt.CurrEpoch() {
-		rt.Abortf(exitcode.ErrIllegalArgument, "sector expiration %v must be after now (%v)", params.Expiration, rt.CurrEpoch())
+	if _, ok := SupportedProofTypes[params.SealProof]; !ok {
+		rt.Abortf(exitcode.ErrIllegalArgument, "unsupported seal proof type: %s", params.SealProof)
 	}
-	if params.SealRandEpoch >= rt.CurrEpoch() {
-		rt.Abortf(exitcode.ErrIllegalArgument, "seal challenge epoch %v must be before now %v", params.SealRandEpoch, rt.CurrEpoch())
-	}
+	builtin.RequireParam(rt, params.SectorNumber <= abi.MaxSectorNumber,
+		"sector number %d out of range 0..(2^63-1)", params.SectorNumber)
+	builtin.RequireParam(rt, params.SealedCID.Defined(),
+		"sealed CID undefined")
+	builtin.RequireParam(rt, params.SealRandEpoch < rt.CurrEpoch(),
+		"seal challenge epoch %v must be before now %v", params.SealRandEpoch, rt.CurrEpoch())
+
+	// The subsequent commitment proof can't possibly be accepted because the seal challenge will be deemed
+	// too old. Note that passing this check doesn't guarantee the proof will be soon enough, depending on
+	// when it arrives.
 	challengeEarliest := sealChallengeEarliest(rt.CurrEpoch(), params.SealProof)
-	if params.SealRandEpoch < challengeEarliest {
-		// The subsequent commitment proof can't possibly be accepted because the seal challenge will be deemed
-		// too old. Note that passing this check doesn't guarantee the proof will be soon enough, depending on
-		// when it arrives.
-		rt.Abortf(exitcode.ErrIllegalArgument, "seal challenge epoch %v too old, must be after %v", params.SealRandEpoch, challengeEarliest)
+	builtin.RequireParam(rt, params.SealRandEpoch >= challengeEarliest,
+		"seal challenge epoch %v too old, must be after %v", params.SealRandEpoch, rt.CurrEpoch())
+
+	builtin.RequireParam(rt, params.Expiration > rt.CurrEpoch(),
+		"sector expiration %v must be after now (%v)", params.Expiration, rt.CurrEpoch())
+	if params.ReplaceCapacity {
+		builtin.RequireParam(rt, len(params.DealIDs) >= 0,
+			"cannot replace sector without committing deals")
 	}
-	if params.ReplaceCapacity && len(params.DealIDs) == 0 {
-		rt.Abortf(exitcode.ErrIllegalArgument, "cannot replace sector without committing deals")
-	}
+	builtin.RequireParam(rt, params.ReplaceSectorDeadline < WPoStPeriodDeadlines,
+		"invalid deadline %d", params.ReplaceSectorDeadline)
+	builtin.RequireParam(rt, params.ReplaceSectorNumber < abi.MaxSectorNumber,
+		"invalid sector number", params.ReplaceSectorNumber)
 
 	// gather information from other actors
 	baselinePower, epochReward := requestCurrentEpochBaselinePowerAndReward(rt)
@@ -771,6 +784,7 @@ func (a Actor) ExtendSectorExpiration(rt Runtime, params *ExtendSectorExpiration
 	// https://github.com/filecoin-project/specs-actors/issues/416
 	var sectorCount uint64
 	for _, decl := range params.Extensions {
+		builtin.RequireParam(rt, decl.Deadline < WPoStPeriodDeadlines, "deadline not in range 0..%d", WPoStPeriodDeadlines)
 		count, err := decl.Sectors.Count()
 		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalArgument,
 			"failed to count sectors for deadline %d, partition %d",
@@ -921,6 +935,7 @@ func (a Actor) TerminateSectors(rt Runtime, params *TerminateSectorsParams) *Ter
 	}
 	var sectorCount uint64
 	for _, term := range params.Terminations {
+		builtin.RequireParam(rt, term.Deadline < WPoStPeriodDeadlines, "deadline not in range 0..%d", WPoStPeriodDeadlines)
 		count, err := term.Sectors.Count()
 		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalArgument,
 			"failed to count sectors for deadline %d, partition %d",
@@ -1051,6 +1066,7 @@ func (a Actor) DeclareFaults(rt Runtime, params *DeclareFaultsParams) *adt.Empty
 	}
 	var sectorCount uint64
 	for _, decl := range params.Faults {
+		builtin.RequireParam(rt, decl.Deadline < WPoStPeriodDeadlines, "deadline not in range 0..%d", WPoStPeriodDeadlines)
 		count, err := decl.Sectors.Count()
 		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalArgument,
 			"failed to count sectors for deadline %d, partition %d",
@@ -1201,6 +1217,7 @@ func (a Actor) DeclareFaultsRecovered(rt Runtime, params *DeclareFaultsRecovered
 
 	var sectorCount uint64
 	for _, decl := range params.Recoveries {
+		builtin.RequireParam(rt, decl.Deadline < WPoStPeriodDeadlines, "deadline not in range 0..%d", WPoStPeriodDeadlines)
 		count, err := decl.Sectors.Count()
 		builtin.RequireNoErr(rt, err, exitcode.ErrIllegalArgument,
 			"failed to count sectors for deadline %d, partition %d",
@@ -1303,9 +1320,8 @@ type CompactPartitionsParams struct {
 // Removed sectors are removed from state entirely.
 // May not be invoked if the deadline has any un-processed early terminations.
 func (a Actor) CompactPartitions(rt Runtime, params *CompactPartitionsParams) *adt.EmptyValue {
-	if params.Deadline >= WPoStPeriodDeadlines {
-		rt.Abortf(exitcode.ErrIllegalArgument, "invalid deadline %v", params.Deadline)
-	}
+	builtin.RequireParam(rt, params.Deadline < WPoStPeriodDeadlines, "deadline not in range 0..%d", WPoStPeriodDeadlines)
+
 	var st State
 	rt.State().Transaction(&st, func() interface{} {
 		info := getMinerInfo(rt, &st)
@@ -1328,6 +1344,8 @@ func (a Actor) CompactPartitions(rt Runtime, params *CompactPartitionsParams) *a
 
 // Locks up some amount of a the miner's unlocked balance (including any received alongside the invoking message).
 func (a Actor) AddLockedFund(rt Runtime, amountToLock *abi.TokenAmount) *adt.EmptyValue {
+	builtin.RequireParam(rt, amountToLock.Sign() >= 0, "cannot lock up a negative amount of funds")
+
 	store := adt.AsStore(rt)
 	var st State
 	newlyVested := rt.State().Transaction(&st, func() interface{} {
